@@ -1,0 +1,332 @@
+openapi: 3.0.3
+info:
+  title: KCC API
+  description: "LoggingController에서 제공하는 사용자 관련 API 명세 (여러 예시 포함)"
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:8080
+    description: 로컬 서버 (개발용)
+
+paths:
+  /api/users:
+    get:
+      summary: "모든 사용자 정보 조회"
+      description: |
+        헤더에 Bearer 토큰을 포함해야 합니다.  
+        유효한 토큰이면 상태값과 새로운 토큰(refresh) 정보를 반환합니다.
+      operationId: getAllUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          description: "Bearer JWT 토큰 (예: 'Bearer eyJhbGciOiJIUzI1Ni...')"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "성공적으로 토큰을 갱신하고 사용자 정보를 가져옴"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "불러오기 성공"
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              examples:
+                success:
+                  summary: "정상 응답 예시"
+                  value:
+                    status: 200
+                    success: true
+                    message: "불러오기 성공"
+                    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        "400":
+          description: "헤더가 유효하지 않거나 누락된 경우"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalidHeader:
+                  summary: "Bearer 토큰이 없거나 형식이 잘못된 경우"
+                  value:
+                    status: 400
+                    success: false
+                    message: "유효하지 않은 헤더입니다."
+        "401":
+          description: "토큰이 유효하지 않은 경우 (만료 또는 검증 실패)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                expiredOrInvalidToken:
+                  summary: "만료되었거나 검증에 실패한 토큰"
+                  value:
+                    status: 401
+                    success: false
+                    message: "다시 로그인 하세요."
+                    redirect: "/api/signin"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/signin:
+    post:
+      summary: "이메일과 비밀번호로 로그인 (JWT 발급)"
+      description: "이메일과 비밀번호를 받아 인증 후, JWT 토큰을 발급합니다."
+      operationId: signIn
+      requestBody:
+        required: true
+        description: "로그인 시 필요한 정보(JSON)"
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignInRequest"
+            examples:
+              normal:
+                summary: "정상 입력 예시"
+                value:
+                  email: "test@example.com"
+                  password: "1234"
+              missingEmail:
+                summary: "이메일 누락"
+                value:
+                  password: "1234"
+              missingPassword:
+                summary: "비밀번호 누락"
+                value:
+                  email: "test@example.com"
+                  password: null
+      responses:
+        "200":
+          description: "로그인 성공 시 JWT 토큰 반환"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1Ni..."
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      email:
+                        type: string
+                        example: "test@example.com"
+              examples:
+                success:
+                  summary: "로그인 성공 응답 예시"
+                  value:
+                    success: true
+                    token: "eyJhbGciOiJIUzI1Ni..."
+                    user:
+                      id: 1
+                      email: "test@example.com"
+        "400":
+          description: "이메일 또는 비밀번호 누락"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingFields:
+                  summary: "필수 필드(이메일/비밀번호)가 비어있는 경우"
+                  value:
+                    success: false
+                    message: "Email and password are required"
+        "401":
+          description: "인증 실패"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalidCredentials:
+                  summary: "잘못된 이메일 또는 비밀번호"
+                  value:
+                    success: false
+                    message: "Invalid email or password"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/signup:
+    post:
+      summary: "이메일, 비밀번호, 닉네임으로 회원가입"
+      description: "필수 항목(Email, Password, Username)을 받아 회원가입을 진행합니다."
+      operationId: signUp
+      requestBody:
+        required: true
+        description: "회원가입 시 필요한 정보(JSON)"
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignUpRequest"
+            examples:
+              normal:
+                summary: "정상 회원가입 예시"
+                value:
+                  email: "newuser@example.com"
+                  password: "mypassword"
+                  username: "new_user"
+              missingUsername:
+                summary: "username 누락된 예시"
+                value:
+                  email: "newuser@example.com"
+                  password: "mypassword"
+                  # username 누락
+      responses:
+        "201":
+          description: "회원가입 성공"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "User registered successfully"
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 10
+                      email:
+                        type: string
+                        example: "newuser@example.com"
+                      created_at:
+                        type: string
+                        format: date-time
+                        example: "2025-03-13T12:34:56"
+              examples:
+                successSignup:
+                  summary: "회원가입 성공 응답 예시"
+                  value:
+                    success: true
+                    message: "User registered successfully"
+                    user:
+                      id: 10
+                      email: "newuser@example.com"
+                      created_at: "2025-03-13T12:34:56"
+        "400":
+          description: "필수 필드 누락"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingFields:
+                  summary: "Email, password, or username 중 하나 이상 누락"
+                  value:
+                    success: false
+                    message: "Email, password, and username are required"
+        "409":
+          description: "이메일 중복"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                duplicateEmail:
+                  summary: "이미 존재하는 이메일"
+                  value:
+                    success: false
+                    message: "Email is already in use"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SignInRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "test@example.com"
+        password:
+          type: string
+          format: password
+          example: "1234"
+
+    SignUpRequest:
+      type: object
+      required:
+        - email
+        - password
+        - username
+      properties:
+        email:
+          type: string
+          format: email
+          example: "newuser@example.com"
+        password:
+          type: string
+          format: password
+          example: "mypassword"
+        username:
+          type: string
+          example: "new_user"
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 400
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "에러 메시지 내용"
+        redirect:
+          type: string
+          example: "/api/signin"
+      description: "에러 응답 공통 구조"
+
+  responses:
+    InternalServerError:
+      description: "서버 내부 오류"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            internalError:
+              summary: "서버 에러 예시"
+              value:
+                success: false
+                message: "Internal server error"

@@ -294,7 +294,7 @@ public Article create(@RequestBody ArticleForm dto) {
 ![img_13.png](img_13.png)
 
 
-<h2>12장 <서비스 계츨과 트랜잭션></h2><br>
+# 12장 <서비스 계츨과 트랜잭션>
 
 * 서비스란?
 : 컨트롤러와 리파지터리 사이에 위치하는 계층으로, 서버의 핵심 기능(비즈니스 로직)을 처리하는 순서를 총괄한다
@@ -305,14 +305,225 @@ public Article create(@RequestBody ArticleForm dto) {
 * 롤백이란?
 : 트랜잭션이 실패로 돌아갈 경우 진행 초기 단계로 돌리는 것
 
-* 컨트롤러의 역할 : 클라이언트 요청받기
+* 기존 컨트롤러는 컨트롤러 + 서비스 구조였음, 12장에서는 이를 분할 함
+
+
+* 컨트롤러의 역할 : 클라이언트 요청받기, 응답하기
 * 서비스의 역할 : 리파지터리에 데이터 가져오도록 명령하기
-* 컨트롤러의 역할 : 클라이언트에 응답하기
+
+## 12.2 서비스 계층 만들기
+
+### 12.2.1 게시글 조회 요청 개선하기
+* 개선을 하기 위해서는 더 이상 리파지터리와 컨트롤러가 만날 일 없이 서비스가 해당 요청을 처리하도록 수정해야한다.
+* 개선 후 형태
+```java
+@GetMapping("/api/articles/{id}") 
+    public Article show(@PathVariable Long id){
+        // 바로 return을 하여 코드를 간소화 한다. 이때 service에 함수와 매개변수를 정의해준다.
+        return articleService.show(id);
+    }
+```
+* dto   
+-> POST와 같은 요청 메시지에 담긴 데이터를 전달해야 할때 사용   
+
+* 성공, 실패 응답하기
+```java
+return (created != null) ? // 생성을 성공하면 정상, 실패하면 오류 응답 (삼항 연산자)
+                ResponseEntity.status(HttpStatus.OK).body(created) : // 생성을 성공했을 때 OK 반환
+                ResponseEntity.status(HttpStatus.BAD_REQUEST).build(); // 생성을 실패할 때 BAD_REQUEST 반환
+```
+위에서 응답하는 형식처험 조건에 따라 good 또는 bad를 실행할 때는 삼항 연산자를 사용
+
+```java
+ResponseEntity.status(상태코드).응답엔티티; // 이렇게 응답하면 된다
+```
+
+* controller에서 호출한 service 예시
+```java
+public Article create(ArticleForm dto) {
+        Article article = dto.toEntity(); // controller에서 요청한 dto를 entity형태로 변환
+        return articleRepository.save(article); // 변환된 entity를 DB에 저장
+    }
+```
+* 글 생성 postman 화면
+![img_14.png](img_14.png)
 
 
+* **post요청이지만 id를 1로 설정하면 글이 수정되어버리는 오류 발생**
+![img_15.png](img_15.png)
 
+* 글에 Id가 포함되어 있으면 -> null 반환
+```java
+public Article create(ArticleForm dto) {
+        Article article = dto.toEntity(); // controller에서 요청한 dto를 entity형태로 변환
+        if(article.getId() != null){ // article, 즉 entity에 id가 있으면 getId()메소드가 작동하므로 
+            return null; // null을 반환한다
+        }
+        return articleRepository.save(article); // 변환된 entity를 DB에 저장
+    }
+```
+글을 수정하려고 하면 400 오류코드가 뜸
+![img_16.png](img_16.png)
 
+### 12.2.3 게시글 수정 요청 개선하기
+* ArticleApiController.java 
+간결하게 바뀌었다.
+```java
+// PATCH
+    @PatchMapping("/api/articles/{id}")
+    public ResponseEntity<Article> update(@PathVariable Long id, @RequestBody ArticleForm dto){
+        Article updated = articleService.update(id, dto);
+        return (updated != null) ?
+                ResponseEntity.status(HttpStatus.OK).body(updated):
+                ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+    }
+```
 
+* 기존 Controller의 로직을 ArticleService.java에 이동
+```java
+public Article update(Long id, ArticleForm dto) {
+        //1. DTO -> 엔티티 변환
+        Article article = dto.toEntity();
+        log.info("id: {}, article: {}", id, article.toString()); //로그 찍기
+        //2. 타깃 조회
+        Article target = articleRepository.findById(id).orElse(null);
+        //3. 잘못된 요청 처리하기
+        if(target == null || id != article.getId()){
+            // 400, 잘목된 요청 응답!
+            log.info("잘못된 요청! id: {}, article: {}", id, article.toString());
+            return null;
+        }
+        //4. 업데이트 및 정상 응답(200)
+        target.patch(article); // 기존 데이터에 새 데이터 붙이기
+        Article updated = articleRepository.save(target); // 수정 내용 DB에 최종 저장
+        return updated; // 수정 데이터를 반환
+    }
+```
 
+### 12.2.4 게시글 삭제 요청 개선하기
 
+* 간결하게 바뀐 ArticleApiController.java 
+```java
+// DELETE
+    @DeleteMapping("/api/articles/{id}")
+    public ResponseEntity<Article> delete(@PathVariable Long id){
+        Article deleted = articleService.delete(id);
+        return (deleted != null) ?
+                ResponseEntity.status(HttpStatus.NO_CONTENT).build(): // deleted에 내용이 있다면 -> 정상적으로 삭제, NO_CONTENT 상태로 빌드만 해서 보냄
+                ResponseEntity.status(HttpStatus.BAD_REQUEST).build(); // deleted에 내용이 없다면 -> 삭제 안됨, BAD_REQUEST 상태로 빌드만 해서 보
+    }
+```
 
+* 마찬가지로 기존 Controller의 로직을 ArticleService.java에 이동
+```java
+public Article delete(Long id) {
+        //1. 대상 찾기
+        Article target = articleRepository.findById(id).orElse(null);
+        //2. 잘못된 요청 처리하기
+        if(target == null){
+            return null;
+        }
+        //3. 대상 삭제하기
+        articleRepository.delete(target);
+        return target; // 삭제한 대상을 컨트롤러에 반환
+    }
+```
+
+* 삭제 확인
+![img_17.png](img_17.png)
+
+* 1분 퀴즈   
+-> 2번
+
+## 12.3 트랜잭션 맛보기
+
+* 트랜잭션   
+: 반드시 성공해야만 하는 일련의 과정, 만약 성공하지 못하면 rollback됨
+
+* 시나리오
+1. 게시판에 데이터 3개를 한꺼번에 생성 요청하기
+2. 데이터를 DB에 저장하는 과정에서 의도적으로 오류 발생시키기
+3. 어떻게 롤백되는지 확인하기
+
+* 스트림 문법   
+: 리스트와 같은 자료구조에 저장된 요소를 하나씩 순회하면서 처리하는 코드 패턴
+
+```java
+// 1. dto 묶음(리스트)을 엔티티 묶음(리스트)으로 변환하기
+        List<Article> articleList = dtos.stream()
+                .map(dto -> dto.toEntity())
+                .collect(Colletors.toList());
+```
+
+* 강제로 예외 상황을 발생시켰기 때문에 상태코드 500으로 응답
+![img_19.png](img_19.png)
+
+* 데이터 생성 실패 이전 상황으로 되돌리듯이 트랜젝션을 사용하고 싶다 -> 트랜젝션 선언 (@Transactionl)
+```java
+   @Transactional
+    public List<Article> createArticles(List<ArticleForm> dtos) {
+        // 1. dto 묶음(리스트)을 엔티티 묶음(리스트)으로 변환하기
+        List<Article> articleList = dtos.stream()
+                .map(dto -> dto.toEntity())
+                .collect(Collectors.toList());
+        // 2. 엔티티 묶음(리스트)을 DB에 저장하기
+        articleList.stream() // articleList를 스트림화
+                .forEach(article -> articleRepository.save(article)); // article이 하나씩 올 때마다 articleRepository를 통해 DB를 저장
+        // 3. 강제로 에러를 발생시키기
+        articleRepository.findById(-1L) // -1 인 Id는 없음, 일부러 에러를 발생시키는 것임
+                .orElseThrow(() -> new IllegalArgumentException("결제 실패!")); // 찾는 데이터가 없으면 예외 발생
+        // 4. 결과 값 반환하기
+        return articleList; // 형식상 반환
+    }
+}
+```
+위 코드에서는 강제로 오류를 발생시켜 데이터 생성을 롤백 시킴   
+
+* 1분 퀴즈   
+-> ㄱ: 트랜젝션, ㄴ: 롤백   
+
+## 셀프체크
+* service파일을 만들었는데 controller에서 인식이 안된다   
+-> service 파일 첫 번째 줄에 package com.example.firstproject.service; 를 붙여보자   
+
+* error: incompatible types: Coffee cannot be converted to ResponseEntity<Coffee>
+  return target;   
+```java
+@PostMapping("/api/coffees")
+    public Coffee create(@RequestBody CoffeeDto dto) {
+        Coffee created =  coffeeService.create(dto);
+        return (created != null) ?
+                ResponseEntity.status(HttpStatus.OK).body(created):
+                ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+    }
+```
+-> 메서드 선언부에는 Coffee 타입을 반환한다고 되어있음, 하지만 return 에서는 ResponseEntity를 반환함.
+**해결법**   
+-> 메서드 선언부의 Coffee -> ResponseEntity<Coffee> 형으로 수정
+
+* update 메서드가 제대로 동작하지 않음
+![img_20.png](img_20.png)
+
+* create 서비스에서의 예외처리   
+-> coffee 가 신규로 작성되었다면 body에 id가 있을 필요가 없기 때문에 getId()메서드로 예외처리
+```java
+public Coffee create(CoffeeDto coffeeDto) {
+        Coffee coffee = coffeeDto.toEntity();
+        // coffee 가 신규로 작성되었다면 body에 id가 있을 필요가 없기 때문에 getId()메서드로 예외처리
+        if(coffee.getId() != null){
+            return null;
+        }
+        return coffeeRepository.save(coffee);
+    }
+```
+
+* 간결하게 코드 구성하기   
+-> 서비스의 update 메서드에서 updated는 불필요하기 때문에 축약
+```java
+//target.patch(coffee);
+//        Coffee updated = coffeeRepository.save(target);
+//        return updated;
+    //위 코드를 아래와 같이 축약할 수 있다
+target.patch(coffee);
+        return coffeeRepository.save(target);
+```
