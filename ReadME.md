@@ -527,3 +527,169 @@ public Coffee create(CoffeeDto coffeeDto) {
 target.patch(coffee);
         return coffeeRepository.save(target);
 ```
+
+# 13장 테스트 코드 작성하기
+## 13.1 테스트란
+* 테스트: 프로그램의 품질을 검증하는 것   
+
+* 테스트 코드의 3단계
+1. 예상 데이터 작성하기
+2. 실제 데이터 획득하기
+3. 예상 데이터와 실제 데이터 비교해 검증하기
+
+* 디버깅: 테스트를 통과하지 못하면 잘못된 부분을 찾아 고치는 것(성공하면 -> 리팩터링)
+
+* 테스트 케이스: 테스트 코드를 다양한 경우를 대비해 작성한 것   
+-> 성공할 경우, 실패할 경우등 여러 다양한 상황을 예상해 세부적으로 작성
+
+* 테스트 주도 개발(Test Driven Development): 테스트 코드를 만든 후 이를 통과하는 최소한의 코드부터 시작해 점진적으로 코드를 개선 및 확장해 나가는 개발 방식
+![img_22.png](img_22.png)
+
+## 13.2 테스트 코드 작성하기
+### 13.2.1 테스트 코드 기본 틀 만들기
+```java
+package com.example.firstproject.service;
+
+import org.junit.jupiter.api.Test; // Test 패키지 임포트
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import static org.junit.jupiter.api.Assertions.*; // 앞으로 사용할 수 있는 패키지 임포트
+
+@SpringBootTest // 해당 클래스를 스프링 부트와 연동해 통합 테스트를 수행하겠다고 선언 -> 테스트 코드에서 스프링 부트가 관리하는 다양한 객체를 주입받을 수 있음
+class ArticleServiceTest {
+    
+    @Autowired
+    ArticleService articleService; // articleService 객체 주입
+    @Test // 해당 메서드가 테스트 코드임을 선언
+    void index() {
+    }
+}
+```
+
+### 13.2.2 index()테스트 하기
+
+* 테스트 하는 순서
+1. 예상 데이터 작성하기
+2. 실제 데이터 획득하기
+3. 예상 데이터와 실제 데이터 비교해 검증하기
+
+* Arrays.asList() 메서드   
+: 입력된 배열 또는 2개 이상의 동일한 타입 데이터를 정적 리스트로 만들어 반환. 정적 리스트는 고정 크기 -> add(), remove() 사용 불가능   
+정적 리스트에 add(), remove() 메서드를 사용하려면 -> 정적 리스트를 일반 리스트로 새로 만들어야 함   
+
+**정적 리스트 -> 새 ArrayList로 만드는 예**
+
+```java
+List<String> list = new ArrayList<>(fixedSizeListA);
+```
+
+* 테스트 코드
+```java
+@SpringBootTest // 해당 클래스를 스프링 부트와 연동해 통합 테스트를 수행하겠다고 선언 -> 테스트 코드에서 스프링 부트가 관리하는 다양한 객체를 주입받을 수 있음
+class ArticleServiceTest {
+
+    @Autowired
+    ArticleService articleService; // articleService 객체 주입
+    @Test // 해당 메서드가 테스트 코드임을 선언
+    void index() {
+        // 1. 예상 데이터
+        Article a = new Article(1L, "가가가가", "1111"); // 예상 데이터 객체로 저장
+        Article b = new Article(2L, "나나나나", "2222");
+        Article c = new Article(3L, "다다다다", "3333");
+        List<Article> expected = new ArrayList<>(Arrays.asList(a, b, c)); // a, b, c 합치기
+        // 2. 실제 데이터
+        List<Article> articles = articleService.index(); // 모든 게시글을 조회 요청하고 그 결과로 반환되는 게시글의 묶음을 받아옴
+        // 3. 비교 및 검증
+        assertEquals(expected.toString(), articles.toString());
+    }
+
+    @Test
+    void show_성공_존재하는_id_입력() {
+        // 1. 예상 데이터
+        Long id = 1L;
+        Article expacted = new Article(id, "가가가가", "1111");
+        // 2. 실제 데이터
+        Article article = articleService.show(id); // 실제 데이터 저장
+        // 3. 비교 및 검증
+        assertEquals(expacted.toString(), article.toString()); // 비교
+    }
+    @Test
+    void show_실패_존재하지_않는_id_입력() {
+        // 1. 예상 데이터
+        Long id = -1L;
+        Article expacted = null;
+        // 2. 실제 데이터
+        Article article = articleService.show(id); // 실제 데이터 저장
+        // 3. 비교 및 검증
+        assertEquals(expacted, article); // 실제 데이터, 예상 데이터의 값 null은 toString() 메서드를 호출할 수 없음
+    }
+}
+```
+
+### 13.2.4 create() 테스트하기
+```java
+@Test
+    void create_성공_title과_content만_있는_dto_입력() {
+        // 1. 예상 데이터
+        String title = "라라라라";
+        String content = "4444";
+        ArticleForm dto = new ArticleForm(null, title, content);
+        Article expected = new Article(4L, title, content);
+        // 2. 실제 데이터
+        Article article = articleService.create(dto);
+        // 3. 비교 및 검증
+        assertEquals(expected.toString(), article.toString());
+    }
+    @Test
+    void create_실패_id가_포함된_dto_입력() {
+        // 1. 예상 데이터
+        Long id = 4L;
+        String title = "라라라라";
+        String content = "4444";
+        ArticleForm dto = new ArticleForm(id, title, content);
+        Article expacted = null;
+        // 2. 실제 데이터
+        Article article = articleService.create(dto);
+        // 3. 비교 및 검증
+        assertEquals(expacted, article); // 어차피 null 이므로 .toString() 메서드는 사용하지 않는다
+    }
+```
+
+### 13.2.5 여러 테스트 케이스 한 번에 실행하기
+* 각 테스트 케이스별로는 잘 실행되었지만, 여러 테스트 케이스를 한번에 실행하니 실패할 때
+![img_23.png](img_23.png)
+-> 롤백을 하지 않았기 때문에 발생
+-> 데이터 조회를 제외한 생성, 수정, 삭제하는 테스트를 할 때는 반드시 트랜젝션(@Transaction)으로 묶어 테스트가 종료되면 원래대로 돌아갈 수 있게 해줘야 함
+
+* 1분 퀴즈   
+ㄱ: (1)테스트 케이스   
+ㄴ: (4)디버깅   
+ㄷ: (5)리팩터링   
+ㄹ: (2)@SpringBootTest   
+ㅁ: (3)@Transactional   
+
+### 셀프체크
+* 비교를 할 때 .toString을 할것인지 Article자체로 비교할것인지 잘 선택해야하는 이유
+```java
+@Test
+    @Transactional
+    void delete_성공_존재하는_id_입력() {
+        // 1. 예상 데이터
+        Long id = 1L;
+        Article expected = new Article(id, "가가가가", "1111");
+        // 2. 실제 데이터
+        Article article = articleService.delete(id);
+        // 3. 비교 및 검증
+        assertEquals(expected, article);
+    }
+```
+위의 코드로 하면 
+![img_24.png](img_24.png)
+이런식으로 엔티티의 내용은 같지만 엔티티 객체가 다른 인스턴스이기 때문에 테스트가 성공하지 못한다.   
+```java
+        assertEquals(expected.toString(), article.toString());
+
+```
+.toString() 메소드를 사용하여 내용을 비교하면 테스트가 성공한다.   
+-> 결론: **상황에 따라 알맞은 내용으로 비교 및 검증을 하자.**
